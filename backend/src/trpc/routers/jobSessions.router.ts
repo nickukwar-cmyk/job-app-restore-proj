@@ -12,9 +12,16 @@ import {
   storageStateToCookieString,
   storageStateToJson,
 } from '../../services/browserAuth.js';
+import {
+  EXTERNAL_SESSION_PROVIDERS,
+  validateProviderCookieHeader,
+  type ExternalSessionProvider,
+} from '../../services/jobSources/sessionCookies.js';
+import { decryptSessionCookies, encryptSessionCookies } from '../../services/jobSources/sessionCookieCrypto.js';
+import { testExternalProviderSession } from '../../services/jobSources/externalSessionVerifier.js';
 
-const SUPPORTED_PROVIDERS = ['indeed', 'gumtree'] as const;
-type Provider = typeof SUPPORTED_PROVIDERS[number];
+const SUPPORTED_PROVIDERS = EXTERNAL_SESSION_PROVIDERS;
+type Provider = ExternalSessionProvider;
 
 async function getLocalUserId(clerkId: string): Promise<string | null> {
   const row = await db.select({ id: users.id }).from(users).where(eq(users.clerkId, clerkId)).limit(1);
@@ -22,6 +29,7 @@ async function getLocalUserId(clerkId: string): Promise<string | null> {
 }
 
 async function upsertSession(userId: string, provider: string, cookieString: string, storageStateJson?: string) {
+  const encryptedCookieString = encryptSessionCookies(cookieString);
   const existing = await db.select({ id: userJobSessions.id })
     .from(userJobSessions)
     .where(and(eq(userJobSessions.userId, userId), eq(userJobSessions.provider, provider)))
@@ -29,9 +37,11 @@ async function upsertSession(userId: string, provider: string, cookieString: str
 
   if (existing.length > 0) {
     await db.update(userJobSessions).set({
-      cookies: cookieString,
+      cookies: encryptedCookieString,
       storageState: storageStateJson ?? null,
       isActive: true,
+      sessionStatus: 'active',
+      lastHealthReason: null,
       updatedAt: new Date(),
     }).where(eq(userJobSessions.id, existing[0].id));
   } else {
@@ -39,8 +49,9 @@ async function upsertSession(userId: string, provider: string, cookieString: str
       id: randomUUID(),
       userId,
       provider,
-      cookies: cookieString,
+      cookies: encryptedCookieString,
       storageState: storageStateJson ?? null,
+      sessionStatus: 'active',
     });
   }
 }
@@ -57,7 +68,9 @@ export const jobSessionsRouter = router({
         id: userJobSessions.id,
         provider: userJobSessions.provider,
         isActive: userJobSessions.isActive,
+        sessionStatus: userJobSessions.sessionStatus,
         lastTestedAt: userJobSessions.lastTestedAt,
+        lastHealthReason: userJobSessions.lastHealthReason,
         updatedAt: userJobSessions.updatedAt,
       }).from(userJobSessions).where(eq(userJobSessions.userId, localId));
     }),
@@ -155,7 +168,10 @@ export const jobSessionsRouter = router({
     .mutation(async ({ input }) => {
       const localId = await getLocalUserId(input.userId);
       if (!localId) throw new Error('User not found');
-      await upsertSession(localId, input.provider, input.cookies);
+      const validation = validateProviderCookieHeader(input.provider, input.cookies);
+      if (!validation.ok) throw new Error(validation.reason ?? 'Invalid provider cookies');
+
+      await upsertSession(localId, input.provider, validation.cookies);
       return { success: true };
     }),
 
@@ -173,34 +189,18 @@ export const jobSessionsRouter = router({
 
       if (!session[0]) return { ok: false, reason: 'No session saved' };
 
-      const testUrls: Record<Provider, string> = {
-        indeed: 'https://www.indeed.co.uk/jobs?q=developer&l=London&limit=1',
-        gumtree: 'https://www.gumtree.com/jobs/england/london?q=developer',
-      };
+      const result = await testExternalProviderSession(input.provider, decryptSessionCookies(session[0].cookies));
+      await db.update(userJobSessions)
+        .set({
+          isActive: result.status === 'active' || result.status === 'blocked',
+          sessionStatus: result.status,
+          lastHealthReason: result.reason.slice(0, 500),
+          lastTestedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(userJobSessions.id, session[0].id));
 
-      try {
-        const res = await fetch(testUrls[input.provider], {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'text/html',
-            'Cookie': session[0].cookies,
-          },
-        });
-
-        const html = await res.text();
-        const isLoggedIn = input.provider === 'indeed'
-          ? (html.includes('jobsearch-ResultsList') || html.includes('mosaic-provider-jobcards'))
-          : (html.includes('data-q="search-result"') || html.includes('listing-title'));
-
-        const ok = res.ok && isLoggedIn;
-        await db.update(userJobSessions)
-          .set({ isActive: ok, lastTestedAt: new Date(), updatedAt: new Date() })
-          .where(eq(userJobSessions.id, session[0].id));
-
-        return { ok, reason: ok ? 'Session is active' : 'Session expired — please log in again' };
-      } catch (err) {
-        return { ok: false, reason: String(err) };
-      }
+      return { ok: result.ok, status: result.status, reason: result.reason, httpStatus: result.httpStatus };
     }),
 
   // ── Remove session ────────────────────────────────────────────────────────
