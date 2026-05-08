@@ -51,20 +51,21 @@ type JobResult = {
 // Removed unused FitAnalysis type - defined in backend
 
 type SessionStatus = { id: string; provider: string; isActive: boolean; lastTestedAt: Date | null; updatedAt: Date };
+type SessionProvider = 'indeed' | 'gumtree' | 'glassdoor' | 'linkedin';
 
 // Alphabetically sorted providers
 const ALL_SOURCES = ['adzuna', 'cv-library', 'findajob', 'glassdoor', 'gumtree', 'indeed', 'jooble', 'linkedin', 'monster', 'reed', 'totaljobs'] as const;
 type Source = (typeof ALL_SOURCES)[number];
 
-const SOURCE_META: Record<Source, { label: string; color: string; requiresSession: boolean; url: string }> = {
+const SOURCE_META: Record<Source, { label: string; color: string; requiresSession: boolean; url: string; loginUrl?: string; cookieHelp?: string }> = {
   adzuna: { label: 'Adzuna', color: 'bg-amber-500/20 text-amber-400', requiresSession: false, url: '' },
   'cv-library': { label: 'CV-Library', color: 'bg-indigo-500/20 text-indigo-400', requiresSession: false, url: '' },
   findajob: { label: 'Find a Job', color: 'bg-teal-500/20 text-teal-400', requiresSession: false, url: '' },
-  glassdoor: { label: 'Glassdoor', color: 'bg-emerald-500/20 text-emerald-400', requiresSession: true, url: 'https://www.glassdoor.co.uk' },
+  glassdoor: { label: 'Glassdoor', color: 'bg-emerald-500/20 text-emerald-400', requiresSession: true, url: 'https://www.glassdoor.co.uk', loginUrl: 'https://www.glassdoor.co.uk/index.htm', cookieHelp: 'Open Glassdoor, sign in (Google sign-in is OK), confirm https://www.glassdoor.co.uk/member/profile/accountSettings opens, then paste your Glassdoor Cookie header here.' },
   gumtree: { label: 'Gumtree', color: 'bg-green-500/20 text-green-400', requiresSession: true, url: 'https://www.gumtree.com/jobs' },
   indeed: { label: 'Indeed', color: 'bg-blue-500/20 text-blue-400', requiresSession: true, url: 'https://www.indeed.co.uk' },
   jooble: { label: 'Jooble', color: 'bg-sky-500/20 text-sky-400', requiresSession: false, url: '' },
-  linkedin: { label: 'LinkedIn', color: 'bg-cyan-500/20 text-cyan-400', requiresSession: true, url: 'https://www.linkedin.com' },
+  linkedin: { label: 'LinkedIn', color: 'bg-cyan-500/20 text-cyan-400', requiresSession: true, url: 'https://www.linkedin.com', loginUrl: 'https://www.linkedin.com/', cookieHelp: 'Open LinkedIn, sign in (Google sign-in is OK if LinkedIn offers it on your account), confirm your feed opens, then paste your LinkedIn Cookie header here.' },
   monster: { label: 'Monster UK', color: 'bg-orange-500/20 text-orange-400', requiresSession: false, url: '' },
   reed: { label: 'Reed', color: 'bg-rose-500/20 text-rose-400', requiresSession: false, url: '' },
   totaljobs: { label: 'Totaljobs', color: 'bg-purple-500/20 text-purple-400', requiresSession: false, url: '' },
@@ -75,6 +76,10 @@ const SESSION_BOARD_TOOLTIP: Partial<Record<Source, string>> = {
     'Indeed needs a saved browser session. Click “Sessions” (cookie icon) above, expand Indeed, sign in with the secure wizard, then tick Indeed here again.',
   gumtree:
     'Gumtree needs a saved browser session. Click “Sessions”, expand Gumtree, complete the login wizard, then enable Gumtree here.',
+  glassdoor:
+    'Glassdoor needs saved cookies. Click “Sessions”, expand Glassdoor, log in at Glassdoor (Google sign-in is fine), then paste the Cookie header.',
+  linkedin:
+    'LinkedIn needs saved cookies. Click “Sessions”, expand LinkedIn, log in at LinkedIn (Google sign-in is fine if available), then paste the Cookie header.',
 };
 
 
@@ -258,7 +263,7 @@ function ExplainFitModal({ jobId, userId, onClose }: { jobId: string; userId: st
 type LoginStep = 'idle' | 'enterCredentials' | 'awaitingCode' | 'success' | 'error';
 
 function SessionPanel({ provider, status, userId }: {
-  provider: 'indeed' | 'gumtree';
+  provider: SessionProvider;
   status: SessionStatus | undefined;
   userId: string;
 }) {
@@ -269,6 +274,7 @@ function SessionPanel({ provider, status, userId }: {
   const [code, setCode] = useState('');
   const [codeSentTo, setCodeSentTo] = useState<string | null>(null);
   const [msg, setMsg] = useState('');
+  const [cookies, setCookies] = useState('');
   const utils = api.useUtils();
   const meta = SOURCE_META[provider];
 
@@ -316,22 +322,36 @@ function SessionPanel({ provider, status, userId }: {
     onSuccess: () => { void utils.jobSessions.getStatus.invalidate(); },
   });
 
+  const saveCookiesMutation = api.jobSessions.saveCookies.useMutation({
+    onSuccess: () => {
+      setCookies('');
+      setStep('success');
+      void utils.jobSessions.getStatus.invalidate();
+    },
+    onError: () => { setMsg('Could not save cookies. Please paste the full Cookie header and try again.'); setStep('error'); },
+  });
+
   const removeMutation = api.jobSessions.remove.useMutation({
     onSuccess: () => { void utils.jobSessions.getStatus.invalidate(); setStep('idle'); },
   });
 
-  const isLoading = startIndeed.isPending || submitIndeedCode.isPending || startGumtree.isPending || submitGumtreeCode.isPending;
+  const isLoading = startIndeed.isPending || submitIndeedCode.isPending || startGumtree.isPending || submitGumtreeCode.isPending || saveCookiesMutation.isPending;
 
   function handleStart() {
     setMsg('');
     if (provider === 'indeed') startIndeed.mutate({ userId, email, password: password || undefined });
-    else startGumtree.mutate({ userId, email, password: password || undefined });
+    else if (provider === 'gumtree') startGumtree.mutate({ userId, email, password: password || undefined });
+  }
+
+  function handleSaveCookies() {
+    setMsg('');
+    saveCookiesMutation.mutate({ userId, provider, cookies });
   }
 
   function handleCode() {
     setMsg('');
     if (provider === 'indeed') submitIndeedCode.mutate({ userId, code });
-    else submitGumtreeCode.mutate({ userId, code });
+    else if (provider === 'gumtree') submitGumtreeCode.mutate({ userId, code });
   }
 
   return (
@@ -421,6 +441,41 @@ function SessionPanel({ provider, status, userId }: {
           ) : (
             /* Step: enter credentials */
             <div className="space-y-3">
+              {provider === 'glassdoor' || provider === 'linkedin' ? (
+                <div className="space-y-3">
+                  <p className="text-xs text-slate-400">{meta.cookieHelp}</p>
+                  <ol className="list-decimal space-y-1 pl-4 text-xs text-slate-500">
+                    <li>
+                      Open{' '}
+                      <a href={meta.loginUrl} target="_blank" rel="noopener noreferrer" className="text-indigo-300 underline underline-offset-2">
+                        {meta.loginUrl}
+                      </a>{' '}
+                      and sign in. Using Google is OK when the provider offers it.
+                    </li>
+                    <li>After login, copy only the Cookie request header for that provider domain from your browser developer tools or cookie exporter.</li>
+                    <li>Paste it below. We store cookies only for this provider session; never paste your Google cookies.</li>
+                  </ol>
+                  <textarea
+                    placeholder={`${meta.label} Cookie header, e.g. li_at=...; JSESSIONID=...`}
+                    value={cookies}
+                    onChange={(e) => setCookies(e.target.value)}
+                    rows={4}
+                    className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-600 font-mono"
+                  />
+                  {msg && step === 'error' && (
+                    <p className="text-xs text-red-400 rounded-lg bg-red-500/10 px-3 py-2">{msg}</p>
+                  )}
+                  <button
+                    onClick={handleSaveCookies}
+                    disabled={cookies.trim().length < 10 || isLoading}
+                    className="w-full rounded-xl bg-indigo-600 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60 flex items-center justify-center gap-2"
+                  >
+                    {isLoading ? <><Loader2 className="h-4 w-4 animate-spin" />Saving…</> : `Save ${meta.label} cookies`}
+                  </button>
+                  <p className="text-xs text-slate-600 text-center">If you logged in with Google, paste the resulting {meta.label} cookies — not Google account cookies.</p>
+                </div>
+              ) : (
+                <>
               <p className="text-xs text-slate-400">
                 Enter your {meta.label} credentials. The server will log in automatically via a secure headless browser — your password is never stored.
               </p>
@@ -449,6 +504,8 @@ function SessionPanel({ provider, status, userId }: {
                 {isLoading ? <><Loader2 className="h-4 w-4 animate-spin" />Connecting…</> : `Connect ${meta.label}`}
               </button>
               <p className="text-xs text-slate-600 text-center">Your password is used only to connect and is never stored by us.</p>
+                </>
+              )}
             </div>
           )}
         </div>
@@ -872,11 +929,14 @@ export default function JobsDiscovery() {
   const jobIds = visibleJobs.map((j) => j.id);
   const indeedStatus = sessions.find((s) => s.provider === 'indeed');
   const gumtreeStatus = sessions.find((s) => s.provider === 'gumtree');
+  const glassdoorStatus = sessions.find((s) => s.provider === 'glassdoor');
+  const linkedinStatus = sessions.find((s) => s.provider === 'linkedin');
 
-  const usesSessionBoardInSearch = sources.includes('indeed') || sources.includes('gumtree');
-  const sessionBoardGap =
-    (sources.includes('indeed') && !indeedStatus?.isActive) ||
-    (sources.includes('gumtree') && !gumtreeStatus?.isActive);
+  const usesSessionBoardInSearch = sources.some((source) => SOURCE_META[source].requiresSession);
+  const sessionBoardGap = sources.some((source) => {
+    if (!SOURCE_META[source].requiresSession) return false;
+    return !sessions.find((session) => session.provider === source)?.isActive;
+  });
   const sessionBoardsReady = usesSessionBoardInSearch && !sessionBoardGap;
 
   const jobStatusQuery = api.jobs.getUserJobStatuses.useQuery(
@@ -899,10 +959,10 @@ export default function JobsDiscovery() {
             onClick={() => setShowSessions((v) => !v)}
             title={
               sessionBoardGap
-                ? 'Finish Indeed / Gumtree session setup so selected boards can search.'
+                ? 'Finish session setup so selected boards can search.'
                 : sessionBoardsReady
-                  ? 'Indeed and Gumtree sessions are active for your current search sources.'
-                  : 'Open provider sessions (Indeed and Gumtree) when you enable those sources.'
+                  ? 'Provider sessions are active for your current search sources.'
+                  : 'Open provider sessions when you enable sources that require cookies.'
             }
             className={`flex items-center gap-2 rounded-2xl border px-4 py-2 text-sm font-medium transition ${sessionBoardGap
               ? 'motion-safe:animate-session-warn border-red-900/70 bg-gradient-to-br from-red-950/90 to-orange-950/60 text-orange-50 motion-reduce:animate-none'
@@ -945,10 +1005,12 @@ export default function JobsDiscovery() {
       {/* Session panels */}
       {showSessions && userId && (
         <div className="space-y-2">
-          <p className="text-xs text-slate-500 uppercase tracking-wider">Provider sessions — Indeed &amp; Gumtree require your browser cookies</p>
+          <p className="text-xs text-slate-500 uppercase tracking-wider">Provider sessions — some job boards require saved browser cookies</p>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <SessionPanel provider="indeed" status={indeedStatus} userId={userId} />
             <SessionPanel provider="gumtree" status={gumtreeStatus} userId={userId} />
+            <SessionPanel provider="glassdoor" status={glassdoorStatus} userId={userId} />
+            <SessionPanel provider="linkedin" status={linkedinStatus} userId={userId} />
           </div>
         </div>
       )}
