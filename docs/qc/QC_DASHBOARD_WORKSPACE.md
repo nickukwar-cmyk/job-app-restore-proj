@@ -387,7 +387,167 @@ Poniższe elementy wskazują że repo przeszło przez fazę intensywnej równole
 
 ---
 
-## 9. AUDIT TRAIL
+## 9. ANALIZA KODU — STAN BAZY (main)
+
+### 9.1 Metryki ogólne
+
+| Obszar | Pliki | Linie kodu (bez testów/backupów) |
+|---|---|---|
+| Frontend (`frontend/src`) | **166** `.tsx`/`.ts` | **~35 500** |
+| Backend (`backend/src`) | **348** `.ts` | **~36 800** |
+| DB tabele w `schema.ts` | — | **46 tabel** |
+| tRPC routery zarejestrowane | — | **29** |
+| Ekrany w `APP_SCREENS` | — | **25** |
+
+### 9.2 Duplikaty — krytyczny dług techniczny
+
+#### FRONTEND — 4 wersje ProfileScreen (aktywna tylko 1)
+
+| Plik | Linie | Status |
+|---|---|---|
+| `ProfilePage.tsx` | 844 | **Nieaktywny** — nie w routerze |
+| `ProfileScreen.tsx` | 591 | **Nieaktywny** — nie w routerze |
+| `ProfileScreenCanonical.tsx` | 327 | **Nieaktywny** — nie w routerze |
+| `ProfileScreenV2.tsx` | 219 | **Aktywny** — router importuje jako `ProfilePage` |
+
+**~1762 linii martwego kodu Profile w repo.**
+
+#### BACKEND — 3 backupy jobRadar.router committowane do repo
+
+```
+jobRadar.router.ts         ← aktywny
+jobRadar.router.ts.backup  ← MARTWY (committowany)
+jobRadar.router.ts.bak2    ← MARTWY (committowany)
+jobRadar.router.ts.bak3    ← MARTWY (committowany)
+```
+
+#### BACKEND — dwa silniki Live Interview
+
+| Plik | Linie | Status |
+|---|---|---|
+| `liveInterviewEngine.ts` | 737 | Aktywny |
+| `liveInterviewEnhanced.ts` | 355 | **Niejasny** — czy zastępuje, czy rozszerza? |
+
+#### BACKEND — `profile.router.ts` vs `profile.safe.router.ts`
+
+| Plik | Linie | Co robi |
+|---|---|---|
+| `profile.router.ts` | 896 | **Pełny router** — NIE jest zarejestrowany w `index.ts` |
+| `profile.safe.router.ts` | 216 | **Safe wrapper** — importuje legacy router, TO jest zarejestrowane jako `profile` |
+
+**Skutek:** `profile.router.ts` (896 linii) to legacy kod importowany pośrednio przez safe router.
+
+#### FRONTEND — `AiAnalysisPage.tsx` istnieje, NIE jest w routerze
+
+- Plik: `frontend/src/app/analysis/AiAnalysisPage.tsx` (626 linii)
+- Router ma tylko redirect: `/ai-analysis` → `/reports`
+- Komponent nigdy nie jest renderowany — **martwy kod**
+
+#### FRONTEND — dwa Job Radar ekrany
+
+| Plik | Ścieżka routera |
+|---|---|
+| `JobRadarScanPage.tsx` + `JobRadarLandingPage.tsx` + `JobRadarReportPage.tsx` | `/job-radar/*` (z `APP_SCREENS.jobRadar`) |
+| `JobRadar.tsx` (`app/radar/`) | `/radar` (hardcoded, poza APP_SCREENS!) |
+| `JobRadarReport.tsx` (`app/jobs/`) | `jobs/radar/:scanId` |
+
+**`/radar` to osobna implementacja poza canonical APP_SCREENS — nie ma jej w sidebarze.**
+
+### 9.3 Pliki `.bak`/`.backup` committowane do repo
+
+Ogółem **8 plików** backupowych w tracked files:
+
+```
+shared/profile.ts.bak
+frontend/src/router.tsx.bak
+frontend/src/app/jobs/JobsDiscovery.tsx.bak
+frontend/src/app/jobs/JobRadarReport.tsx.backup
+backend/src/services/documentTailoring.ts.backup
+backend/src/trpc/routers/jobRadar.router.ts.backup
+backend/src/trpc/routers/jobRadar.router.ts.bak2
+backend/src/trpc/routers/jobRadar.router.ts.bak3
+```
+
+### 9.4 Architektura backend — niespójność
+
+**Dwa modele architektoniczne w tym samym repo:**
+
+| Wzorzec | Lokalizacja | Moduły |
+|---|---|---|
+| **tRPC Monolithic** | `backend/src/trpc/routers/` | Wszystkie 29 routerów |
+| **DDD/Clean Architecture** | `backend/src/modules/` | `job-radar`, `legal-hub-search`, `session-practice`, `skillup` |
+
+Job Radar ma **pełny moduł DDD** (`handlers`, `services`, `domain`, `infrastructure`, `api`) ORAZ osobny `jobRadar.router.ts` w tRPC. Oba są aktywne i podpięte.
+
+**Skutek:** Job Radar ma dwa równoległe wejścia: `/trpc/jobRadar.*` i REST `/api/job-radar/*`.
+
+### 9.5 DB Schema — niespójność
+
+**Dwa miejsca definicji schematu:**
+
+| Plik | Tabele |
+|---|---|
+| `backend/src/db/schema.ts` | **46 tabel** — główny plik |
+| `backend/src/db/schemas/job-radar.ts` | Osobny schemat dla Job Radar |
+| `backend/src/db/schemas/skillup.ts` | Osobny schemat dla SkillUp |
+
+### 9.6 TypeScript — luźna konfiguracja
+
+**Backend `tsconfig.json`:**
+```json
+"strict": false,
+"noUnusedLocals": false,
+"noUnusedParameters": false
+```
+
+**Frontend `tsconfig.json`:**
+```json
+"strict": true,
+"noUnusedLocals": false,
+"noUnusedParameters": false
+```
+
+Backend ma wyłączony strict — TypeScript nie wyłapuje `null`/`undefined` błędów runtime.
+
+### 9.7 Testy — stan
+
+| Obszar | Pliki spec | Stan |
+|---|---|---|
+| `backend/src/trpc/routers/__tests__/` | 9 plików | **node_modules NIE zainstalowane** — `vitest: not found` |
+| `backend/src/modules/job-radar/__tests__/` | 18 plików | j.w. — nie można uruchomić |
+| `frontend/src` | 2 pliki spec (`settingsTabFromUrl.spec.ts`, `warmupTierCatalog.spec.ts`) | j.w. |
+
+**Krytyczne:** `npm ci` nie zostało uruchomione w tym środowisku. Żaden test nie jest wykonalny.
+
+### 9.8 `shared/` — podwójna kompilacja
+
+Katalog `shared/` zawiera zarówno `.ts` jak i `.js` wersje tych samych plików:
+```
+profile.ts + profile.js + profile.ts.bak
+interview.ts + interview.js
+assistant.ts + assistant.js
+trpc.ts + trpc.js
+```
+
+`.js` pliki to prawdopodobnie skompilowane artefakty committowane do repo — **nie powinny być w tracked files**.
+
+### 9.9 Ekran `jobRadar` — podwójna ścieżka routera
+
+W `APP_SCREENS`:
+```
+jobRadar: { path: '/job-radar', showInSidebar: true }
+```
+
+W routerze `router.tsx` dodany **osobno** poza APP_SCREENS:
+```tsx
+{ path: 'radar', element: withSuspense(JobRadar) }
+```
+
+`/radar` i `/job-radar` to dwa różne ekrany Job Radar. `/radar` nie jest w sidebarze, nie ma w APP_SCREENS, nieudokumentowany.
+
+---
+
+## 11. AUDIT TRAIL
 
 | Krok | Wykonano | Wynik |
 |---|---|---|
@@ -401,6 +561,12 @@ Poniższe elementy wskazują że repo przeszło przez fazę intensywnej równole
 | Sprawdzenie root directory | ✅ | 50+ śmieciowych plików |
 | Sprawdzenie patch.diff | ✅ | Niezastosowana zmiana schematu |
 | Sprawdzenie backend tests | ✅ | 9 spec files, dashboard.router spec niekompletny |
+| Analiza kodu frontend | ✅ | 166 plików, 35 500 linii, 4 duplikaty ProfileScreen |
+| Analiza kodu backend | ✅ | 348 plików, 36 800 linii, 8 plików .bak w repo |
+| Audyt duplikatów | ✅ | Profile x4, jobRadar.router x4, liveInterview x2 |
+| Audyt architektury | ✅ | DDD vs tRPC monolithic — 2 wzorce równolegle |
+| Stan node_modules | ✅ | NIE zainstalowane — vitest: not found |
+| Audyt shared/ | ✅ | .js artefakty committowane do repo |
 
 ---
 
