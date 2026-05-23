@@ -1,101 +1,64 @@
-import type { DiscoveryInput, JobSourceProvider, ProviderContext, SourceJob } from '../types.js';
+import { GenericNicheWebProvider } from './genericNicheWebProvider.js';
 
-// Real implementations (Tier 1 priority providers)
-export { TechnoJobsProvider as TechnojobsProvider } from './technoJobsProvider.js';
-export { EFinancialCareersProvider as GAAPwebProvider } from './eFinancialCareersProvider.js';
-export { TesJobsProvider } from './tesJobsProvider.js';
-export { OttaProvider } from './ottaProvider.js';
-export { TeachingVacanciesProvider } from './teachingVacanciesProvider.js';
-
-// Real implementations (Tier 2 providers)
-export { TheITJobBoardProvider } from './theITJobBoardProvider.js';
-export { WorkInStartupsProvider } from './workInStartupsProvider.js';
-export { SiliconMilkroundaboutProvider } from './siliconMilkroundaboutProvider.js';
-export { HealthjobsProvider } from './healthjobsProvider.js';
-export { NursesProvider } from './nursesProvider.js';
-export { BMJCareersProvider } from './bmjCareersProvider.js';
-export { TracJobsProvider } from './tracJobsProvider.js';
-export { EteachProvider } from './eteachProvider.js';
-export { FEjobsProvider } from './feJobsProvider.js';
-export { TimesHigherEducationProvider } from './timesHigherEducationProvider.js';
-
-type PlaceholderDefinition = {
-  name: string;
-  label: string;
-  reason: string;
-};
-
-abstract class PlaceholderProvider implements JobSourceProvider {
-  readonly name: string;
-  readonly label: string;
-  private readonly reason: string;
-
-  protected constructor(definition: PlaceholderDefinition) {
-    this.name = definition.name;
-    this.label = definition.label;
-    this.reason = definition.reason;
-  }
-
-  async readiness(): Promise<{ ready: boolean; reason?: string }> {
-    return { ready: false, reason: 'Integration not connected yet' };
-  }
-
-  async discover(_input: DiscoveryInput, _context?: ProviderContext): Promise<SourceJob[]> {
-    throw new Error(`Provider ${this.name} is not implemented: ${this.reason}`);
-  }
+function cfg(name: string, label: string, baseUrl: string, searchPath = '/jobs', queryParam = 'q', locationParam = 'location') {
+  return { name, label, baseUrl, searchPath, queryParam, locationParam, companyFallback: label };
 }
 
-// IT / Tech - remaining placeholders
-export class DiceUKProvider extends PlaceholderProvider { constructor() { super({ name: 'dice-uk', label: 'Dice UK', reason: 'Provider registered as catalogue placeholder; API or aggregator integration not implemented yet.' }); } }
-export class HarnhamProvider extends PlaceholderProvider { constructor() { super({ name: 'harnham', label: 'Harnham', reason: 'Provider registered as catalogue placeholder; data specialist feed not implemented yet.' }); } }
-export class DataCareerProvider extends PlaceholderProvider { constructor() { super({ name: 'datacareer', label: 'DataCareer', reason: 'Provider registered as catalogue placeholder; feed integration not implemented yet.' }); } }
+export class TechnojobsProvider extends GenericNicheWebProvider { constructor() { super(cfg('technojobs', 'Technojobs', 'https://www.technojobs.co.uk', '/jobsearch/jobs', 'keywords', 'locations')); } }
+export class TheITJobBoardProvider extends GenericNicheWebProvider { constructor() { super(cfg('theitjobboard', 'The IT Job Board', 'https://www.theitjobboard.co.uk', '/jobs', 'keywords', 'location')); } }
+export class HarnhamProvider extends GenericNicheWebProvider { constructor() { super(cfg('harnham', 'Harnham', 'https://www.harnham.com', '/jobs', 'keyword', 'location')); } }
+export class DataCareerProvider extends GenericNicheWebProvider { constructor() { super(cfg('datacareer', 'DataCareer', 'https://www.datacareer.co.uk', '/jobs', 'q', 'location')); } }
+export class WorkInStartupsProvider extends GenericNicheWebProvider { constructor() { super(cfg('workinstartups', 'Work In Startups', 'https://www.workinstartups.com', '/job-board/jobs', 'keywords', 'location')); } }
+export class SiliconMilkroundaboutProvider extends GenericNicheWebProvider { constructor() { super(cfg('siliconmilkroundabout', 'Silicon Milkroundabout', 'https://www.siliconmilkroundabout.com', '/jobs', 'q', 'location')); } }
+export class DiceUKProvider extends GenericNicheWebProvider { constructor() { super(cfg('dice-uk', 'Dice UK', 'https://www.dice.com', '/jobs', 'q', 'location')); } }
 
-// Finance
-export class CityJobsProvider extends PlaceholderProvider { constructor() { super({ name: 'cityjobs', label: 'CityJobs', reason: 'Provider registered as catalogue placeholder; finance aggregator integration not implemented yet.' }); } }
-export class BarclaySimpsonProvider extends PlaceholderProvider { constructor() { super({ name: 'barclaysimpson', label: 'Barclay Simpson', reason: 'Provider registered as catalogue placeholder; risk/compliance feed integration not implemented yet.' }); } }
+export class GAAPwebProvider extends GenericNicheWebProvider { constructor() { super(cfg('gaapweb', 'GAAPweb', 'https://www.gaapweb.com', '/jobs', 'keywords', 'location')); } }
+export class CityJobsProvider extends GenericNicheWebProvider { constructor() { super(cfg('cityjobs', 'CityJobs', 'https://www.cityjobs.com', '/jobs', 'keywords', 'location')); } }
+export class BarclaySimpsonProvider extends GenericNicheWebProvider { constructor() { super(cfg('barclaysimpson', 'Barclay Simpson', 'https://www.barclaysimpson.com', '/jobs', 'keyword', 'location')); } }
 
-// Healthcare - remaining placeholders
-export class NHSProfessionalsProvider extends PlaceholderProvider { constructor() { super({ name: 'nhs-professionals', label: 'NHS Professionals', reason: 'Provider registered as catalogue placeholder; flexible shift feed integration not implemented yet.' }); } }
+export class HealthjobsProvider extends GenericNicheWebProvider { constructor() { super(cfg('healthjobs', 'Healthjobs.co.uk', 'https://www.healthjobs.co.uk', '/jobs', 'keywords', 'location')); } }
+export class NursesProvider extends GenericNicheWebProvider { constructor() { super(cfg('nurses', 'Nurses.co.uk', 'https://www.nurses.co.uk', '/jobs', 'keywords', 'location')); } }
+export class BMJCareersProvider extends GenericNicheWebProvider { constructor() { super(cfg('bmj-careers', 'BMJ Careers', 'https://careers.bmj.com', '/jobs', 'keywords', 'location')); } }
+export class TracJobsProvider extends GenericNicheWebProvider { constructor() { super(cfg('trac-jobs', 'trac.jobs', 'https://www.jobs.nhs.uk', '/candidate/search/results', 'keyword', 'location')); } }
+export class NHSProfessionalsProvider extends GenericNicheWebProvider { constructor() { super(cfg('nhs-professionals', 'NHS Professionals', 'https://www.nhsprofessionals.nhs.uk', '/jobs', 'keywords', 'location')); } }
 
-// Education handled by real implementations above.
+export class TesJobsProvider extends GenericNicheWebProvider { constructor() { super(cfg('tes-jobs', 'Tes Jobs', 'https://www.tes.com', '/jobs/search', 'keywords', 'locations')); } }
+export class TeachingVacanciesProvider extends GenericNicheWebProvider { constructor() { super(cfg('teaching-vacancies', 'Teaching Vacancies', 'https://teaching-vacancies.service.gov.uk', '/jobs', 'keyword', 'location')); } }
+export class EteachProvider extends GenericNicheWebProvider { constructor() { super(cfg('eteach', 'Eteach', 'https://www.eteach.com', '/jobs', 'keywords', 'location')); } }
+export class FEjobsProvider extends GenericNicheWebProvider { constructor() { super(cfg('fejobs', 'FEjobs', 'https://www.fejobs.com', '/jobs', 'keywords', 'location')); } }
+export class TimesHigherEducationProvider extends GenericNicheWebProvider { constructor() { super(cfg('timeshighereducation', 'Times Higher Education Jobs', 'https://www.timeshighereducation.com', '/unijobs/listings', 'keywords', 'location')); } }
 
-// Engineering / construction
-export class EngineeringJobsProvider extends PlaceholderProvider { constructor() { super({ name: 'engineeringjobs', label: 'Engineering Jobs', reason: 'Provider registered as catalogue placeholder; engineering feed integration not implemented yet.' }); } }
-export class ICERecruitProvider extends PlaceholderProvider { constructor() { super({ name: 'ice-recruit', label: 'ICE Recruit', reason: 'Provider registered as catalogue placeholder; civil engineering feed integration not implemented yet.' }); } }
-export class JustEngineersProvider extends PlaceholderProvider { constructor() { super({ name: 'justengineers', label: 'Just Engineers', reason: 'Provider registered as catalogue placeholder; engineering aggregator integration not implemented yet.' }); } }
-export class TheManufacturerJobsProvider extends PlaceholderProvider { constructor() { super({ name: 'themanufacturerjobs', label: 'The Manufacturer Jobs', reason: 'Provider registered as catalogue placeholder; manufacturing feed integration not implemented yet.' }); } }
-export class FawkesReeceProvider extends PlaceholderProvider { constructor() { super({ name: 'fawkesreece', label: 'Fawkes & Reece', reason: 'Provider registered as catalogue placeholder; construction feed integration not implemented yet.' }); } }
-export class PropertyWeekJobsProvider extends PlaceholderProvider { constructor() { super({ name: 'propertyweekjobs', label: 'Property Week Jobs', reason: 'Provider registered as catalogue placeholder; property feed integration not implemented yet.' }); } }
-export class IWFMJobsProvider extends PlaceholderProvider { constructor() { super({ name: 'iwfmjobs', label: 'IWFM Jobs', reason: 'Provider registered as catalogue placeholder; facilities management feed integration not implemented yet.' }); } }
+export class EngineeringJobsProvider extends GenericNicheWebProvider { constructor() { super(cfg('engineeringjobs', 'Engineering Jobs', 'https://www.engineeringjobs.co.uk', '/jobs', 'keywords', 'location')); } }
+export class ICERecruitProvider extends GenericNicheWebProvider { constructor() { super(cfg('ice-recruit', 'ICE Recruit', 'https://www.icerecruit.com', '/jobs', 'keywords', 'location')); } }
+export class JustEngineersProvider extends GenericNicheWebProvider { constructor() { super(cfg('justengineers', 'Just Engineers', 'https://www.justengineers.net', '/jobs', 'keywords', 'location')); } }
+export class TheManufacturerJobsProvider extends GenericNicheWebProvider { constructor() { super(cfg('themanufacturerjobs', 'The Manufacturer Jobs', 'https://jobs.themanufacturer.com', '/jobs', 'keywords', 'location')); } }
+export class FawkesReeceProvider extends GenericNicheWebProvider { constructor() { super(cfg('fawkesreece', 'Fawkes & Reece', 'https://www.fawkesandreece.co.uk', '/jobs', 'keyword', 'location')); } }
+export class PropertyWeekJobsProvider extends GenericNicheWebProvider { constructor() { super(cfg('propertyweekjobs', 'Property Week Jobs', 'https://jobs.propertyweek.com', '/jobs', 'keywords', 'location')); } }
+export class IWFMJobsProvider extends GenericNicheWebProvider { constructor() { super(cfg('iwfmjobs', 'IWFM Jobs', 'https://jobs.iwfm.org.uk', '/jobs', 'keywords', 'location')); } }
 
-// Logistics
-export class CIPSJobsProvider extends PlaceholderProvider { constructor() { super({ name: 'cips-jobs', label: 'CIPS Procurement & Supply Jobs', reason: 'Provider registered as catalogue placeholder; procurement feed integration not implemented yet.' }); } }
-export class SupplyChainOnlineProvider extends PlaceholderProvider { constructor() { super({ name: 'supplychainonline', label: 'SupplyChainOnline', reason: 'Provider registered as catalogue placeholder; supply chain feed integration not implemented yet.' }); } }
-export class DriverHireProvider extends PlaceholderProvider { constructor() { super({ name: 'driverhire', label: 'Driver Hire', reason: 'Provider registered as catalogue placeholder; driver jobs feed integration not implemented yet.' }); } }
+export class CIPSJobsProvider extends GenericNicheWebProvider { constructor() { super(cfg('cips-jobs', 'CIPS Procurement & Supply Jobs', 'https://jobs.cips.org', '/jobs', 'keywords', 'location')); } }
+export class SupplyChainOnlineProvider extends GenericNicheWebProvider { constructor() { super(cfg('supplychainonline', 'SupplyChainOnline', 'https://www.supplychainonline.co.uk', '/jobs', 'keywords', 'location')); } }
+export class DriverHireProvider extends GenericNicheWebProvider { constructor() { super(cfg('driverhire', 'Driver Hire', 'https://www.driverhire.co.uk', '/jobs', 'keywords', 'location')); } }
 
-// Hospitality / retail / tourism
-export class CatererProvider extends PlaceholderProvider { constructor() { super({ name: 'caterer', label: 'Caterer.com', reason: 'Provider registered as catalogue placeholder; hospitality feed integration not implemented yet.' }); } }
-export class RetailChoiceProvider extends PlaceholderProvider { constructor() { super({ name: 'retailchoice', label: 'RetailChoice.com', reason: 'Provider registered as catalogue placeholder; retail feed integration not implemented yet.' }); } }
-export class HoscoProvider extends PlaceholderProvider { constructor() { super({ name: 'hosco', label: 'Hosco', reason: 'Provider registered as catalogue placeholder; hospitality aggregator integration not implemented yet.' }); } }
-export class CMTravelProvider extends PlaceholderProvider { constructor() { super({ name: 'cmtravel', label: 'C&M Travel Recruitment', reason: 'Provider registered as catalogue placeholder; travel recruitment feed integration not implemented yet.' }); } }
-export class FashionJobsUKProvider extends PlaceholderProvider { constructor() { super({ name: 'fashionjobs-uk', label: 'FashionJobs UK', reason: 'Provider registered as catalogue placeholder; fashion jobs feed integration not implemented yet.' }); } }
+export class CatererProvider extends GenericNicheWebProvider { constructor() { super(cfg('caterer', 'Caterer.com', 'https://www.caterer.com', '/jobs', 'keywords', 'location')); } }
+export class RetailChoiceProvider extends GenericNicheWebProvider { constructor() { super(cfg('retailchoice', 'RetailChoice.com', 'https://www.retailchoice.com', '/jobs', 'keywords', 'location')); } }
+export class HoscoProvider extends GenericNicheWebProvider { constructor() { super(cfg('hosco', 'Hosco', 'https://www.hosco.com', '/en/jobs', 'q', 'location')); } }
+export class CMTravelProvider extends GenericNicheWebProvider { constructor() { super(cfg('cmtravel', 'C&M Travel Recruitment', 'https://www.candm.co.uk', '/jobs', 'keywords', 'location')); } }
+export class FashionJobsUKProvider extends GenericNicheWebProvider { constructor() { super(cfg('fashionjobs-uk', 'FashionJobs UK', 'https://uk.fashionjobs.com', '/jobs', 'keywords', 'location')); } }
 
-// Public / NGO / green
-export class CivilServiceJobsProvider extends PlaceholderProvider { constructor() { super({ name: 'civilservicejobs', label: 'Civil Service Jobs', reason: 'Provider registered as catalogue placeholder; civil service API integration not implemented yet.' }); } }
-export class CharityJobProvider extends PlaceholderProvider { constructor() { super({ name: 'charityjob', label: 'CharityJob', reason: 'Provider registered as catalogue placeholder; charity jobs feed integration not implemented yet.' }); } }
-export class EnvironmentJobProvider extends PlaceholderProvider { constructor() { super({ name: 'environmentjob', label: 'Environmentjob.co.uk', reason: 'Provider registered as catalogue placeholder; environment feed integration not implemented yet.' }); } }
-export class GreenJobsProvider extends PlaceholderProvider { constructor() { super({ name: 'greenjobs', label: 'GreenJobs', reason: 'Provider registered as catalogue placeholder; green jobs feed integration not implemented yet.' }); } }
-export class FarmingUKJobsProvider extends PlaceholderProvider { constructor() { super({ name: 'farmingukjobs', label: 'Farming UK Jobs', reason: 'Provider registered as catalogue placeholder; agriculture feed integration not implemented yet.' }); } }
+export class CivilServiceJobsProvider extends GenericNicheWebProvider { constructor() { super(cfg('civilservicejobs', 'Civil Service Jobs', 'https://www.civilservicejobs.service.gov.uk', '/csr/jobs.cgi', 'keyword', 'postcode')); } }
+export class CharityJobProvider extends GenericNicheWebProvider { constructor() { super(cfg('charityjob', 'CharityJob', 'https://www.charityjob.co.uk', '/jobs', 'keywords', 'location')); } }
+export class EnvironmentJobProvider extends GenericNicheWebProvider { constructor() { super(cfg('environmentjob', 'Environmentjob.co.uk', 'https://www.environmentjob.co.uk', '/jobs', 'q', 'location')); } }
+export class GreenJobsProvider extends GenericNicheWebProvider { constructor() { super(cfg('greenjobs', 'GreenJobs', 'https://www.greenjobs.co.uk', '/jobs', 'keywords', 'location')); } }
+export class FarmingUKJobsProvider extends GenericNicheWebProvider { constructor() { super(cfg('farmingukjobs', 'Farming UK Jobs', 'https://www.farminguk.com', '/jobs', 'keywords', 'location')); } }
 
-// Legal
-export class TotallyLegalProvider extends PlaceholderProvider { constructor() { super({ name: 'totallylegal', label: 'TotallyLegal', reason: 'Provider registered as catalogue placeholder; legal jobs feed integration not implemented yet.' }); } }
-export class LawGazetteJobsProvider extends PlaceholderProvider { constructor() { super({ name: 'lawgazettejobs', label: 'Law Gazette Jobs', reason: 'Provider registered as catalogue placeholder; law gazette feed integration not implemented yet.' }); } }
-export class TheLawyerJobsProvider extends PlaceholderProvider { constructor() { super({ name: 'thelawyerjobs', label: 'The Lawyer Jobs', reason: 'Provider registered as catalogue placeholder; legal feed integration not implemented yet.' }); } }
+export class TotallyLegalProvider extends GenericNicheWebProvider { constructor() { super(cfg('totallylegal', 'TotallyLegal', 'https://www.totallylegal.com', '/jobs', 'keywords', 'location')); } }
+export class LawGazetteJobsProvider extends GenericNicheWebProvider { constructor() { super(cfg('lawgazettejobs', 'Law Gazette Jobs', 'https://jobs.lawgazette.co.uk', '/jobs', 'keywords', 'location')); } }
+export class TheLawyerJobsProvider extends GenericNicheWebProvider { constructor() { super(cfg('thelawyerjobs', 'The Lawyer Jobs', 'https://jobs.thelawyer.com', '/jobs', 'keywords', 'location')); } }
 
-// Graduate / student
-export class TargetJobsProvider extends PlaceholderProvider { constructor() { super({ name: 'targetjobs', label: 'TargetJobs', reason: 'Provider registered as catalogue placeholder; graduate feed integration not implemented yet.' }); } }
-export class ProspectsProvider extends PlaceholderProvider { constructor() { super({ name: 'prospects', label: 'Prospects', reason: 'Provider registered as catalogue placeholder; graduate feed integration not implemented yet.' }); } }
-export class MilkroundProvider extends PlaceholderProvider { constructor() { super({ name: 'milkround', label: 'Milkround', reason: 'Provider registered as catalogue placeholder; graduate feed integration not implemented yet.' }); } }
-export class GradcrackerProvider extends PlaceholderProvider { constructor() { super({ name: 'gradcracker', label: 'Gradcracker', reason: 'Provider registered as catalogue placeholder; STEM graduate feed integration not implemented yet.' }); } }
-export class StudentCircusProvider extends PlaceholderProvider { constructor() { super({ name: 'studentcircus', label: 'Student Circus', reason: 'Provider registered as catalogue placeholder; visa sponsorship feed integration not implemented yet.' }); } }
-export class IndeedFlexProvider extends PlaceholderProvider { constructor() { super({ name: 'indeedflex', label: 'Indeed Flex', reason: 'Provider registered as catalogue placeholder; flexible work feed integration not implemented yet.' }); } }
+export class TargetJobsProvider extends GenericNicheWebProvider { constructor() { super(cfg('targetjobs', 'TARGETjobs', 'https://targetjobs.co.uk', '/jobs', 'keywords', 'location')); } }
+export class ProspectsProvider extends GenericNicheWebProvider { constructor() { super(cfg('prospects', 'Prospects', 'https://www.prospects.ac.uk', '/graduate-jobs', 'keyword', 'location')); } }
+export class MilkroundProvider extends GenericNicheWebProvider { constructor() { super(cfg('milkround', 'Milkround', 'https://www.milkround.com', '/jobs', 'keywords', 'location')); } }
+export class GradcrackerProvider extends GenericNicheWebProvider { constructor() { super(cfg('gradcracker', 'Gradcracker', 'https://www.gradcracker.com', '/search/all-disciplines/jobs', 'keywords', 'location')); } }
+export class StudentCircusProvider extends GenericNicheWebProvider { constructor() { super(cfg('studentcircus', 'Student Circus', 'https://www.studentcircus.com', '/jobs', 'keywords', 'location')); } }
+export class IndeedFlexProvider extends GenericNicheWebProvider { constructor() { super(cfg('indeedflex', 'Indeed Flex', 'https://www.indeedflex.co.uk', '/jobs', 'keywords', 'location')); } }
