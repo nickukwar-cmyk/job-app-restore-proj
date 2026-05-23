@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
-import { Outlet, Navigate } from 'react-router-dom';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Outlet, Navigate, useLocation } from 'react-router-dom';
 import { useAuth, useUser } from '@clerk/clerk-react';
 import { Volume2, VolumeX } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useThemeStore } from '@/stores/themeStore';
+import { useJobSourceSettingsStore } from '@/stores/jobSourceSettingsStore';
+import ProviderStatusTicker, { type ProviderTickerItem } from '@/components/jobs/ProviderStatusTicker';
 import Sidebar from './Sidebar';
 import Header from './Header';
 import AiAssistedBanner from './AiAssistedBanner';
@@ -17,7 +19,6 @@ import OnboardingModal, {
   readOnboardingSessionUi,
 } from '../onboarding/OnboardingModal';
 
-// ─── Text-to-Speech floating button ──────────────────────────────────────────
 function TTSButton() {
   const [speaking, setSpeaking] = useState(false);
 
@@ -27,10 +28,7 @@ function TTSButton() {
       setSpeaking(false);
       return;
     }
-    const heading =
-      document.querySelector('h1')?.textContent ??
-      document.querySelector('h2')?.textContent ??
-      document.title;
+    const heading = document.querySelector('h1')?.textContent ?? document.querySelector('h2')?.textContent ?? document.title;
     const mainEl = document.querySelector('main, [role="main"], .page-content');
     const text = mainEl?.textContent?.replace(/\s+/g, ' ').trim().slice(0, 600) ?? heading ?? document.title;
     const utt = new SpeechSynthesisUtterance(text);
@@ -47,39 +45,45 @@ function TTSButton() {
       onClick={speak}
       title={speaking ? 'Stop reading' : 'Read page aloud'}
       aria-label={speaking ? 'Stop reading' : 'Read page aloud'}
-      style={{
-        position: 'fixed',
-        bottom: 24,
-        right: 24,
-        zIndex: 9999,
-        borderRadius: '50%',
-        width: 48,
-        height: 48,
-        background: speaking ? '#dc2626' : '#6366f1',
-        border: 'none',
-        boxShadow: '0 4px 14px rgba(0,0,0,0.35)',
-        cursor: 'pointer',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        transition: 'background 0.2s',
-      }}
+      style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 9999, borderRadius: '50%', width: 48, height: 48, background: speaking ? '#dc2626' : '#6366f1', border: 'none', boxShadow: '0 4px 14px rgba(0,0,0,0.35)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.2s' }}
     >
-      {speaking
-        ? <VolumeX style={{ width: 22, height: 22, color: '#fff' }} />
-        : <Volume2 style={{ width: 22, height: 22, color: '#fff' }} />}
+      {speaking ? <VolumeX style={{ width: 22, height: 22, color: '#fff' }} /> : <Volume2 style={{ width: 22, height: 22, color: '#fff' }} />}
     </button>
   );
+}
+
+function isJobWorkflowRoute(pathname: string, search: string): boolean {
+  if (pathname === '/settings') return new URLSearchParams(search).get('tab') === 'sources';
+  return pathname === '/jobs'
+    || pathname.startsWith('/jobs/')
+    || pathname === '/job-radar'
+    || pathname === '/radar'
+    || pathname === '/applications'
+    || pathname.startsWith('/applications/')
+    || pathname === '/reports';
 }
 
 export default function AppShell() {
   const { isSignedIn, isLoaded } = useAuth();
   const { user, isLoaded: userLoaded } = useUser();
+  const location = useLocation();
   const { focusMode } = useThemeStore();
+  const { providers, load: loadJobSources } = useJobSourceSettingsStore();
   const ensureFromClerk = api.profile.ensureFromClerk.useMutation();
   const ensuredForClerkId = useRef<string | null>(null);
+  const loadedTickerForUser = useRef<string | null>(null);
   const [onboardingLayout, setOnboardingLayout] = useState<'none' | 'fullscreen' | 'minimized'>('none');
   const [onboardingStep, setOnboardingStep] = useState(0);
+
+  const showProviderTicker = isJobWorkflowRoute(location.pathname, location.search);
+
+  const tickerProviders = useMemo<ProviderTickerItem[]>(() => providers.map((provider) => ({
+    id: provider.id ?? provider.name,
+    label: provider.label,
+    status: provider.status,
+    statusLabel: provider.statusReason ?? provider.status,
+    group: provider.group,
+  })), [providers]);
 
   useEffect(() => {
     if (!userLoaded || !user) return;
@@ -87,23 +91,22 @@ export default function AppShell() {
     if (!email) return;
     if (ensuredForClerkId.current === user.id) return;
     ensuredForClerkId.current = user.id;
-    const display =
-      user.fullName?.trim() ||
-      [user.firstName, user.lastName].filter(Boolean).join(' ').trim() ||
-      undefined;
+    const display = user.fullName?.trim() || [user.firstName, user.lastName].filter(Boolean).join(' ').trim() || undefined;
     ensureFromClerk.mutate({ userId: user.id, email, fullName: display });
     if (hasCompletedOnboarding()) {
       setOnboardingLayout('none');
       return;
     }
     const stepFromSession = readOnboardingSessionStep();
-    if (stepFromSession != null) {
-      setOnboardingStep(
-        Math.min(Math.max(stepFromSession, 0), ONBOARDING_STEP_COUNT - 1),
-      );
-    }
+    if (stepFromSession != null) setOnboardingStep(Math.min(Math.max(stepFromSession, 0), ONBOARDING_STEP_COUNT - 1));
     setOnboardingLayout(readOnboardingSessionUi() === 'minimized' ? 'minimized' : 'fullscreen');
   }, [userLoaded, user, ensureFromClerk]);
+
+  useEffect(() => {
+    if (!showProviderTicker || !user?.id || loadedTickerForUser.current === user.id) return;
+    loadedTickerForUser.current = user.id;
+    void loadJobSources(user.id);
+  }, [showProviderTicker, user?.id, loadJobSources]);
 
   if (!isLoaded) {
     return (
@@ -113,19 +116,14 @@ export default function AppShell() {
     );
   }
 
-  if (!isSignedIn) {
-    return <Navigate to="/auth" replace />;
-  }
+  if (!isSignedIn) return <Navigate to="/auth" replace />;
 
   return (
     <div className="mvh-app-root flex h-screen overflow-hidden bg-slate-50 dark:bg-slate-950">
-      {/* Skip-to-content link for keyboard / screen-reader users */}
-      <a href="#main-content" className="skip-to-content">
-        Skip to main content
-      </a>
-
+      <a href="#main-content" className="skip-to-content">Skip to main content</a>
       {!focusMode && <Sidebar />}
       <div className="flex flex-1 flex-col overflow-hidden">
+        {showProviderTicker && <ProviderStatusTicker providers={tickerProviders} />}
         <Header />
         <AiAssistedBanner />
         <main id="main-content" className="flex-1 overflow-y-auto" tabIndex={-1}>
@@ -135,27 +133,8 @@ export default function AppShell() {
         </main>
       </div>
       <TTSButton />
-      {onboardingLayout === 'fullscreen' && (
-        <OnboardingModal
-          step={onboardingStep}
-          onStepChange={setOnboardingStep}
-          onMinimize={() => setOnboardingLayout('minimized')}
-          onFullyDismiss={() => setOnboardingLayout('none')}
-        />
-      )}
-      {onboardingLayout === 'minimized' && (
-        <OnboardingDock
-          step={onboardingStep}
-          onExpand={() => {
-            clearOnboardingMinimizedFlag();
-            setOnboardingLayout('fullscreen');
-          }}
-          onDontShowAgain={() => {
-            completeOnboardingForever();
-            setOnboardingLayout('none');
-          }}
-        />
-      )}
+      {onboardingLayout === 'fullscreen' && <OnboardingModal step={onboardingStep} onStepChange={setOnboardingStep} onMinimize={() => setOnboardingLayout('minimized')} onFullyDismiss={() => setOnboardingLayout('none')} />}
+      {onboardingLayout === 'minimized' && <OnboardingDock step={onboardingStep} onExpand={() => { clearOnboardingMinimizedFlag(); setOnboardingLayout('fullscreen'); }} onDontShowAgain={() => { completeOnboardingForever(); setOnboardingLayout('none'); }} />}
     </div>
   );
 }
