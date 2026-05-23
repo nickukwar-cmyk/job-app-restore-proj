@@ -1,5 +1,24 @@
 import type { DiscoveryInput, JobSourceProvider, ProviderContext, SourceJob } from '../types.js';
 
+// Real implementations (Tier 1 priority providers)
+export { TechnoJobsProvider as TechnojobsProvider } from './technoJobsProvider.js';
+export { EFinancialCareersProvider as GAAPwebProvider } from './eFinancialCareersProvider.js';
+export { TesJobsProvider } from './tesJobsProvider.js';
+export { OttaProvider } from './ottaProvider.js';
+export { TeachingVacanciesProvider } from './teachingVacanciesProvider.js';
+
+// Real implementations (Tier 2 providers)
+export { TheITJobBoardProvider } from './theITJobBoardProvider.js';
+export { WorkInStartupsProvider } from './workInStartupsProvider.js';
+export { SiliconMilkroundaboutProvider } from './siliconMilkroundaboutProvider.js';
+export { HealthjobsProvider } from './healthjobsProvider.js';
+export { NursesProvider } from './nursesProvider.js';
+export { BMJCareersProvider } from './bmjCareersProvider.js';
+export { TracJobsProvider } from './tracJobsProvider.js';
+export { EteachProvider } from './eteachProvider.js';
+export { FEjobsProvider } from './feJobsProvider.js';
+export { TimesHigherEducationProvider } from './timesHigherEducationProvider.js';
+
 type PlaceholderDefinition = {
   name: string;
   label: string;
@@ -26,33 +45,19 @@ abstract class PlaceholderProvider implements JobSourceProvider {
   }
 }
 
-// IT / Tech
-export class TechnojobsProvider extends PlaceholderProvider { constructor() { super({ name: 'technojobs', label: 'Technojobs', reason: 'Provider registered as catalogue placeholder; RSS/API integration not implemented yet.' }); } }
-export class TheITJobBoardProvider extends PlaceholderProvider { constructor() { super({ name: 'theitjobboard', label: 'The IT Job Board', reason: 'Provider registered as catalogue placeholder; aggregator integration not implemented yet.' }); } }
+// IT / Tech - remaining placeholders
+export class DiceUKProvider extends PlaceholderProvider { constructor() { super({ name: 'dice-uk', label: 'Dice UK', reason: 'Provider registered as catalogue placeholder; API or aggregator integration not implemented yet.' }); } }
 export class HarnhamProvider extends PlaceholderProvider { constructor() { super({ name: 'harnham', label: 'Harnham', reason: 'Provider registered as catalogue placeholder; data specialist feed not implemented yet.' }); } }
 export class DataCareerProvider extends PlaceholderProvider { constructor() { super({ name: 'datacareer', label: 'DataCareer', reason: 'Provider registered as catalogue placeholder; feed integration not implemented yet.' }); } }
-export class WorkInStartupsProvider extends PlaceholderProvider { constructor() { super({ name: 'workinstartups', label: 'Work In Startups', reason: 'Provider registered as catalogue placeholder; public feed integration not implemented yet.' }); } }
-export class SiliconMilkroundaboutProvider extends PlaceholderProvider { constructor() { super({ name: 'siliconmilkroundabout', label: 'Silicon Milkroundabout', reason: 'Provider registered as catalogue placeholder; event/job feed integration not implemented yet.' }); } }
-export class DiceUKProvider extends PlaceholderProvider { constructor() { super({ name: 'dice-uk', label: 'Dice UK', reason: 'Provider registered as catalogue placeholder; API or aggregator integration not implemented yet.' }); } }
 
 // Finance
-export class GAAPwebProvider extends PlaceholderProvider { constructor() { super({ name: 'gaapweb', label: 'GAAPweb', reason: 'Provider registered as catalogue placeholder; finance feed integration not implemented yet.' }); } }
 export class CityJobsProvider extends PlaceholderProvider { constructor() { super({ name: 'cityjobs', label: 'CityJobs', reason: 'Provider registered as catalogue placeholder; finance aggregator integration not implemented yet.' }); } }
 export class BarclaySimpsonProvider extends PlaceholderProvider { constructor() { super({ name: 'barclaysimpson', label: 'Barclay Simpson', reason: 'Provider registered as catalogue placeholder; risk/compliance feed integration not implemented yet.' }); } }
 
-// Healthcare
-export class HealthjobsProvider extends PlaceholderProvider { constructor() { super({ name: 'healthjobs', label: 'Healthjobs.co.uk', reason: 'Provider registered as catalogue placeholder; healthcare feed integration not implemented yet.' }); } }
-export class NursesProvider extends PlaceholderProvider { constructor() { super({ name: 'nurses', label: 'Nurses.co.uk', reason: 'Provider registered as catalogue placeholder; nursing feed integration not implemented yet.' }); } }
-export class BMJCareersProvider extends PlaceholderProvider { constructor() { super({ name: 'bmj-careers', label: 'BMJ Careers', reason: 'Provider registered as catalogue placeholder; RSS/API integration not implemented yet.' }); } }
-export class TracJobsProvider extends PlaceholderProvider { constructor() { super({ name: 'trac-jobs', label: 'trac.jobs', reason: 'Provider registered as catalogue placeholder; NHS trust feed integration not implemented yet.' }); } }
+// Healthcare - remaining placeholders
 export class NHSProfessionalsProvider extends PlaceholderProvider { constructor() { super({ name: 'nhs-professionals', label: 'NHS Professionals', reason: 'Provider registered as catalogue placeholder; flexible shift feed integration not implemented yet.' }); } }
 
-// Education
-export class TesJobsProvider extends PlaceholderProvider { constructor() { super({ name: 'tes-jobs', label: 'Tes Jobs', reason: 'Provider registered as catalogue placeholder; education feed integration not implemented yet.' }); } }
-export class TeachingVacanciesProvider extends PlaceholderProvider { constructor() { super({ name: 'teaching-vacancies', label: 'Teaching Vacancies', reason: 'Provider registered as catalogue placeholder; GOV.UK feed integration not implemented yet.' }); } }
-export class EteachProvider extends PlaceholderProvider { constructor() { super({ name: 'eteach', label: 'Eteach', reason: 'Provider registered as catalogue placeholder; school jobs feed integration not implemented yet.' }); } }
-export class FEjobsProvider extends PlaceholderProvider { constructor() { super({ name: 'fejobs', label: 'FEjobs', reason: 'Provider registered as catalogue placeholder; further education feed integration not implemented yet.' }); } }
-export class TimesHigherEducationProvider extends PlaceholderProvider { constructor() { super({ name: 'timeshighereducation', label: 'Times Higher Education Jobs', reason: 'Provider registered as catalogue placeholder; higher education feed integration not implemented yet.' }); } }
+// Education handled by real implementations above.
 
 // Engineering / construction
 export class EngineeringJobsProvider extends PlaceholderProvider { constructor() { super({ name: 'engineeringjobs', label: 'Engineering Jobs', reason: 'Provider registered as catalogue placeholder; engineering feed integration not implemented yet.' }); } }
