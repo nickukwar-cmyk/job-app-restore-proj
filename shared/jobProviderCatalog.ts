@@ -129,6 +129,13 @@ const GROUP_BY_PROVIDER: Record<ProviderName, JobProviderGroup> = {
   manual: 'Internal & AI Sources',
   'openai-discovery': 'Internal & AI Sources',
   'company-targets': 'Internal & AI Sources',
+  rapidapi: 'Runtime Aggregators',
+  serpapi: 'Runtime Aggregators',
+  themuse: 'Runtime Aggregators',
+  'rapidapi-jobs': 'Runtime Aggregators',
+  'gov-jobs': 'Runtime Aggregators',
+  'rss-feed': 'Runtime Aggregators',
+  aggregator: 'Runtime Aggregators',
 };
 
 export const STATUS_LABELS: Record<ProviderStatus, string> = {

@@ -78,8 +78,7 @@ export class GenericNicheWebProvider implements JobSourceProvider {
   }
 
   async readiness(): Promise<{ ready: boolean; reason?: string }> {
-    try { new URL(this.config.searchPath, this.config.baseUrl); return { ready: true }; }
-    catch { return { ready: false, reason: 'Provider search URL is not configured correctly.' }; }
+    return { ready: false, reason: 'Generic web scraper — results vary by site structure. Not verified.' };
   }
 
   async discover(input: DiscoveryInput, _context?: ProviderContext): Promise<SourceJob[]> {

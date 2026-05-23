@@ -670,3 +670,26 @@ html.dark:not(.theme-noir):not(.theme-visually-impaired):not(.theme-overstimulat
   border-color: hsl(38 35% 58% / 0.45);
   box-shadow: 0 0 0 1px hsl(38 40% 45% / 0.2), 0 18px 48px -22px hsl(28 30% 20% / 0.25);
 }
+
+/* ─── Provider Status Ticker ─────────────────────────────────────────────── */
+@keyframes ticker-scroll {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+
+.provider-status-ticker-track {
+  animation: ticker-scroll var(--provider-ticker-duration, 60s) linear infinite;
+}
+
+.provider-status-ticker:hover .provider-status-ticker-track,
+.provider-status-ticker:focus-within .provider-status-ticker-track {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .provider-status-ticker-track {
+    animation: none;
+    overflow-x: auto;
+    scroll-behavior: auto;
+  }
+}
