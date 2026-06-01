@@ -1,118 +1,122 @@
-# CLAUDE.md — Notatki robocze projektu MultivoHub
+# CLAUDE.md
 
-## Gałąź Claude'a
-- Claude zawsze pracuje na gałęzi **`claude/improvements`**
-- Nie commituj bezpośrednio do `main` ani do gałęzi Copilota (`neurodiversity`, `copilot/*`)
-- **Deploy na VPS:** push na `claude/improvements` → GitHub Actions (build) + self-hosted runner (rsync + PM2). Merge do `main` tylko gdy chcesz zsynchronizować stabilną bazę — nie jest potrzebny przy każdej iteracji na produkcję.
-- Po skończonej pracy: `git push origin claude/improvements`; PR do `main` wg potrzeby review, nie jako warunek deployu.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Struktura projektu
-```
-/root/project/              ← katalog na VPS
-  backend/dist/             ← skompilowany backend (tRPC + Express)
-  frontend/dist/            ← statyczne pliki frontendu (Vite build)
+## Project
 
-/Users/nikodem/projects/project/   ← lokalne repo deweloperskie
-  backend/
-  frontend/
-```
+**multivohub-jobapp** (MultivoHub) — an AI-powered job-application platform. A user uploads a CV, discovers and scores jobs ("Job Radar"), auto-applies, and practices interviews/negotiation with an AI coach (GPT-4o-mini + Whisper STT/TTS). Production runs at `jobs.multivohub.com`.
 
-## Deploy — canonical lock (nie sekret)
-- **Marker integralności (commitowany):** `.canonical-repo-key` — dozwolona ścieżka lokalnego repo, `REMOTE_BASE` na VPS, domena, IP, gałąź deployu. Nie zawiera haseł ani API keys.
-- **Polityka:** `docs/policies/canonical-repo-deploy-lock-policy-v1.0.md`
-- **Na VPS jednorazowo:** skopiować `infra/deploy-target-key.example` → `${CANONICAL_REMOTE_BASE}/.deploy-target-key` (zgodnie z przykładem w pliku).
-- **Szybki test (QC / dev):** `cd /Users/nikodem/job-app-restore/proj && bash scripts/verify-canonical-repo.sh`
-- **Ręczny deploy (pełny łańcuch):** `bash scripts/deploy-safe.sh [token]` — ack → backup na VPS → `deploy.sh`; brudne drzewo git blokuje (chyba że `DEPLOY_ALLOW_DIRTY=1`). Sam **`bash scripts/deploy.sh`** — te same guardy (DNS, SSH, `.deploy-target-key`); kopia w `Downloads/KOPIA/...` nie przejdzie ścieżki lokalnej (chyba że `DEPLOY_SKIP_LOCAL_REPO_PATH=1` w `.env.local`).
+It is a TypeScript monorepo using **npm workspaces** (`frontend`, `backend`) plus a `shared/` directory and root-level `lib/`.
 
-## Deploy — automatyczny (domyślny)
-- Workflow: `.github/workflows/deploy.yml` — trigger: **push** na `claude/improvements` lub ręcznie **Run workflow**.
-- W logu sukcesu jest **`github.ref_name`**, żeby od razu było widać, z której gałęzi poszedł deploy.
-- **Produkcyjny VPS:** aplikacja (PM2, `npm ci`, artefakty buildu) w **`/root/project`** — zgodnie z `.canonical-repo-key` i `infra/ecosystem.config.cjs`. Osobny staging = inna ścieżka w pliku kanonicznym albo osobny workflow.
-- W GitHubie muszą być **te same secrets** co przy starym deployu z `main`; runner self-hosted musi mieć label **`production`** (jak w `runs-on` w jobie deploy).
+## Common commands
 
-## Deploy — ręcznie (gdy Actions nie działają)
+All commands are folder-aware on purpose (see "Conventions"). Run from the repo root unless noted.
 
-### Frontend (statyczne pliki)
 ```bash
-cd /Users/nikodem/job-app-restore/proj/frontend && npm run build
-rsync -az --delete dist/ root@147.93.86.209:/root/project/frontend/dist/
+# First-time local setup (needs Docker Desktop running for MySQL)
+cp .env.example .env
+bash scripts/bootstrap-local.sh        # starts MySQL container, installs deps, prepares DB
+
+# Dev (both apps via concurrently): frontend :5173, backend :3001
+npm run dev
+npm run dev:frontend          # cd frontend && vite
+npm run dev:backend           # cd backend && tsx watch src/server.ts
+
+# Build
+npm run build                 # backend (tsc) then frontend (tsc && vite build)
+npm run build:backend
+npm run build:frontend
+
+# Tests (Vitest)
+npm run test:backend          # cd backend && vitest run
+npm run test:frontend
+cd backend && npx vitest run src/services/__tests__/openai.test.ts   # single file
+cd backend && npx vitest run -t "scam risk"                          # single test by name
+cd backend && npm run test:watch
+
+# Lint (flat config at repo root, typescript-eslint)
+npx eslint .
+
+# Database (Drizzle Kit; reads DATABASE_URL)
+npm run db:push               # push schema to DB (cd backend && drizzle-kit push)
+npm run db:generate           # generate SQL migration
+npm run db:validate           # validate required env vars via lib/envSchema.mjs
+
+# Smoke test against local stack
+npm run smoke:local
 ```
-- Nginx (konfig w repo: `infra/nginx/multivohub-jobapp.conf`) serwuje SPA z **`/root/project/frontend/dist`** — po rsync zwykle **bez restartu** nginx (`nginx -t && systemctl reload nginx` tylko gdy zmieniasz sam config).
 
-### Backend (Node.js / tRPC / Express)
-```bash
-cd /Users/nikodem/job-app-restore/proj/backend && npm run build
-rsync -az dist/ root@147.93.86.209:/root/project/dist/backend/
-ssh root@147.93.86.209 "cd /root/project && npm ci --omit=dev --prefix backend && pm2 reload infra/ecosystem.config.cjs --update-env || pm2 start infra/ecosystem.config.cjs"
-```
-- PM2: **`infra/ecosystem.config.cjs`** (procesy `jobapp-server`, worker, webhook) — **`cwd`: `/root/project`**
-- Skrypt serwera: `dist/backend/src/server.js` względem `cwd`
+There is no single-command lint script in `package.json`; invoke `npx eslint .` directly. The backend `tsc` build **excludes** test files (`*.test.ts`, `*.spec.ts`, `__tests__/`).
 
-### Serwer VPS
-- IP: `147.93.86.209`
-- User: `root`
-- Web server: Nginx (config: `infra/nginx/multivohub-jobapp.conf`)
+## Architecture
 
-## Agenci i gałęzie
-| Agent | Gałąź robocza | PR / merge do `main` |
-|---|---|---|
-| **Claude** | `claude/improvements` lub `claude/<temat>` | tylko właściciel (PR); konflikty przy merge PR rozwiązuje właściciel |
-| **Copilot** | `copilot/*` | tylko właściciel (PR) |
+### Backend (`backend/`) — Express + tRPC + Drizzle
 
-### Reguły dla Claude'a
-- Na początku sesji: **`git fetch origin`**. Gdy `main` ma nowe commity — zsynchronizuj się przez **`git rebase origin/main`** na swojej gałęzi; unikaj **`git merge origin/main`**, żeby nie mnożyć merge commitów.
-- Nigdy nie commituj do `main` ani do `copilot/*`.
-- Jeden PR = jeden temat.
-- Współdzielona gałąź **`claude/improvements`**: po rebase historia się zmienia — przed `git push` uzgodnij z innymi; użyj **`git push --force-with-lease`**, żeby nie nadpisać cudzych commitów. Przy pracy samodzielnej rebase + push zwykle daje najczystszą linię historii.
+- **Entry: `backend/src/server.ts`** → compiled to `dist/backend/src/server.js`. Express app on `PORT` (default 3001) with `helmet`, `cors` (origin = `FRONTEND_URL`, credentials), and two `express-rate-limit` tiers (general + tighter AI limiter).
+- **tRPC v11 is the primary API.** Routers live in `backend/src/trpc/routers/*.router.ts` and are composed in `backend/src/trpc/routers/index.ts` into `appRouter`. Mounted at `/trpc`. Uses the **superjson** transformer.
+- **Auth/context: `backend/src/trpc/trpc.ts`** + `backend/src/lib/clerk.ts`. `createContext` authenticates the Clerk bearer token and resolves/creates the app user. Use `publicProcedure` for open endpoints and **`protectedProcedure`** (throws `UNAUTHORIZED` without a valid Clerk user) for everything user-scoped. Billing/credit gating attaches a `spendReservation` to context.
+- **REST routes** coexist with tRPC for streaming/binary payloads (`backend/src/api/routes/`, mounted under `/api/...`):
+  - `/api/interview/transcribe` — Whisper STT (multipart `audio`)
+  - `/api/interview/tts` — TTS (`{ text }` → audio blob)
+  - `/api/interview/stream` — interview conversation SSE stream
+  - `/webhooks/stripe` — raw-body Stripe webhook (registered before `express.json()`)
+  - Job Radar exposes a separate OpenAPI Express router (`modules/job-radar/api/`).
+- **Background worker: `backend/src/worker.ts`** (separate PM2 process). Polls `auto_apply_queue` every 30s and applies via email (SMTP) or Playwright browser automation (Indeed/Gumtree); also runs the daily follow-up scheduler and a 30-min IMAP inbox monitor.
+- **Layering:** `services/` holds business logic (OpenAI, CV parsing, billing/credits, interview engines, job sources, email). Newer features use a DDD-ish module layout under `backend/src/modules/<feature>/{domain,application,infrastructure}` (e.g. `job-radar`, `skillup`, `session-practice`, `legal-hub-search`). AI orchestration/clients/prompts live under `backend/src/ai/` and `backend/src/prompts/`.
 
-## Kluczowe endpointy backendu
-- `/api/interview/transcribe` — Whisper STT (FormData: `audio` blob)
-- `/api/interview/tts` — TTS (JSON: `{ text }` → audio blob)
-- `/api/interview/stream` — streaming rozmowy kwalifikacyjnej (SSE)
-- `/trpc/*` — wszystkie procedury tRPC
+### Frontend (`frontend/`) — React 19 + Vite + tRPC client
 
-## Baza danych
-- MySQL na VPS
-- ORM: Drizzle
-- Tabele profilu: `profiles`, `experiences`, `educations`, `skills`
-- Kolumny `experiences`: `id`, `profileId`, `employerName`, `jobTitle`, `startDate`, `endDate`, `description`
-- Kolumny `educations`: `id`, `profileId`, `schoolName`, `degree`, `fieldOfStudy`, `startDate`, `endDate`
+- **Entry `src/main.tsx` → `src/App.tsx` → `src/router.tsx`.** Routing is React Router v7 (`createBrowserRouter`) with **lazy-loaded** page components wrapped by `AppShell` (`components/layout/`). The screen registry and legacy redirects are centralized in `src/config/appScreens.ts`.
+- **Pages** live in `src/app/<feature>/`; cross-cutting feature logic in `src/features/`; reusable UI in `src/components/`.
+- **Data layer: `src/lib/api.ts`** creates the typed tRPC React-Query client (`createTRPCReact<AppRouter>`), `httpBatchLink` to `${VITE_API_URL}/trpc`, superjson, and injects the Clerk token via `headers()`.
+- **State:** Zustand stores in `src/stores/` (e.g. `themeStore.ts`). Auth via `@clerk/clerk-react`. Styling via Tailwind.
 
-## Zmienne środowiskowe (backend)
-- `OPENAI_API_KEY` — GPT-4o-mini + Whisper
-- `OPENAI_MODEL` — domyślnie `gpt-4o-mini`
-- `DATABASE_URL` — MySQL connection string
-- `RESEND_API_KEY` — wysyłka emaili
+### Shared types — `shared/`
 
-## Tematy (6 motywów)
-Zdefiniowane w `frontend/src/index.css` i `frontend/src/stores/themeStore.ts`:
-- `light` — jasny (domyślny)
-- `dark` — granatowy navy
-- `visually-impaired` — wysoki kontrast (żółty/czarny)
-- `overstimulated` — spokojny kamień
-- `noir` — czarno-biały filmowy
-- `elegant` — kremowo-złoty
+`shared/trpc.ts` re-exports `AppRouter` from the backend so the frontend client is fully type-safe end-to-end. Other `shared/*.ts` files mirror DTOs. The compiled `.js` siblings are committed for the backend's NodeNext resolution — when you change a `shared/*.ts`, keep its usage consistent.
 
-## Plan wykonawczy (rollout)
-- **Kanoniczny plan kolejności, MVP, DoD, ryzyka:** [`docs/executive-plan/final-rollout-execution-plan-v1.0.md`](docs/executive-plan/final-rollout-execution-plan-v1.0.md)
-- **Profile growth direction (Growth Plan + Roadmap):** [`docs/features/profile-growth-and-roadmap-spec-v1.0.md`](docs/features/profile-growth-and-roadmap-spec-v1.0.md)
+### Database — MySQL + Drizzle ORM
 
-## Podział prac (squad — obowiązujący)
-- **Tablica faz, Agent 1 / 2 / 3, QC, PO:** [`docs/squad/README.md`](docs/squad/README.md) · workboard [`docs/squad/Squad_Workboard.md`](docs/squad/Squad_Workboard.md)
-- Starsze pliki `*-three-developer-split*.md` w `docs/features/` = szczegóły modułowe; **kolejność globalna** z workboardu squadu.
+- Schema: `backend/src/db/schema.ts` (large, single source) plus modular schemas in `backend/src/db/schemas/` (`job-radar.ts`, `skillup.ts`). DB client: `backend/src/db/index.ts`.
+- Drizzle config: `backend/drizzle.config.ts` (dialect `mysql`, migrations out to `backend/src/db/migrations`).
+- Raw SQL migrations also exist (`db/migrations/*.sql`, `backend/src/db/migrations/`) and helper scripts (`scripts/run-migrations-on-vps.sh`, `scripts/db-push-on-vps.sh`).
+- Profile model tables: `profiles`, `experiences`, `educations`, `skills`. `experiences` columns: `id, profileId, employerName, jobTitle, startDate, endDate, description`. `educations` columns: `id, profileId, schoolName, degree, fieldOfStudy, startDate, endDate`.
 
-## Quality Control Developer (bramka jakości)
-- Obowiązuje rola finalnego recenzenta techniczno-produktowego przed integracją.
-- Żaden task nie ma statusu "done" bez jawnej decyzji: **Approved For Integration** albo **Not Approved**.
-- Pełna specyfikacja roli, checklista i formaty decyzji: [`docs/policies/quality-control-developer-role-spec.md`](docs/policies/quality-control-developer-role-spec.md)
-- Obowiązkowy standard meldowania wykonania i wejścia do QC: [`docs/policies/execution-reporting-standard.md`](docs/policies/execution-reporting-standard.md)
-- **Spójny layout + motyw + lewa nawigacja (norma FE):** [`docs/policies/unified-app-layout-and-theme-standard-v1.0.md`](docs/policies/unified-app-layout-and-theme-standard-v1.0.md)
-- Łańcuch komunikacji Agent -> QC -> Product Owner -> Agent jest obowiązkowy i opisany w politykach repo.
-- QC musi egzekwować folder-aware commands (komendy build/deploy/setup/recovery zawsze z pełnym folderem).
-- QC porównuje równolegle dostarczone implementacje (A/B) i decyduje: użyj A, użyj B, połącz A+B, albo odrzuć obie.
-- Podział pracy między agentów (A/B/QC): [`docs/policies/agent-work-split.md`](docs/policies/agent-work-split.md)
+### Mobile — Capacitor
 
-## TODO / otwarte zadania
-- [x] CI/CD: push na `claude/improvements` → GitHub Actions (build) + self-hosted runner → deploy na VPS
-- [ ] Avatar w rozmowie kwalifikacyjnej — dopracowanie
-- [ ] Merge `claude/improvements` → `main` — rzadki, świadomy krok wyrównania stabilnej bazy (opcjonalny względem deployu; nie jest warunkiem każdego wdrożenia)
+`capacitor.config.ts` wraps the built frontend. `npm run mobile:sync` / `mobile:add:ios|android` / `mobile:open:*` from root.
+
+## Environment variables
+
+Copy `.env.example` → `.env`. The backend **validates required vars on boot** via `lib/envSchema.mjs` (skipped when `NODE_ENV=test`); run `npm run db:validate` to check. Key vars: `DATABASE_URL`, Clerk (`CLERK_SECRET_KEY`, `VITE_CLERK_PUBLISHABLE_KEY`), `OPENAI_API_KEY` (+ optional `OPENAI_MODEL`, default `gpt-4o-mini`), Stripe + `STRIPE_WEBHOOK_SECRET`, PayPal, `RESEND_API_KEY`, SMTP, job-board APIs (Reed/Adzuna/Jooble), `ENCRYPTION_KEY` (≥32 chars), `PORT`, `FRONTEND_URL`.
+
+## Conventions
+
+- **Module system:** Both packages are ESM (`"type": "module"`). The backend compiles with **NodeNext**, so relative imports in backend/shared `.ts` use explicit **`.js`** extensions (e.g. `import { appRouter } from './trpc/routers/index.js'`). The frontend uses `bundler` resolution + the `@/*` → `frontend/src/*` path alias.
+- **Folder-aware commands (`.cursor/rules/folder-aware-commands.mdc`):** Never present a bare `npm run build` / `npm install` / `pm2 ...`. Always include the exact directory — `cd /abs/path && command` or an explicit **Run In:** line. On failure, report what failed, likely cause, the **Run In:** path, and the corrected full command.
+- **Backup before disk work (`.cursor/rules/backup-before-disk-work.mdc`):** This rule targets the owner's local machine (mirrors to `~/Downloads/KOPIA/...` via `scripts/rolling-workspace-backup.sh`); it is not needed in ephemeral cloud sessions where git is the safety net. It does not replace `git commit`.
+- The same two rules are mirrored for Kiro under `.kiro/steering/`.
+
+## Branches & deployment
+
+> Note: the repo's primary owner-facing notes are historically maintained in Polish in this file's prior revisions and across `docs/`. The canonical machine-readable deploy facts live in `.canonical-repo-key`.
+
+- **Working branches:** Claude works on `claude/improvements` (or `claude/<topic>`); Copilot on `copilot/*`. **Never commit directly to `main`** or to another agent's branch. One PR = one topic. Cloud sessions may use a session-specific `claude/...` branch as instructed.
+- **Sync at session start:** `git fetch origin`; if `main` advanced, rebase your branch (`git rebase origin/main`) rather than merging. On the shared `claude/improvements`, push with `git push --force-with-lease`.
+- **Deploy lock:** `.canonical-repo-key` (committed, **not** a secret — no keys/passwords) pins `CANONICAL_REMOTE_BASE=/root/project`, host `147.93.86.209` / `jobs.multivohub.com`, and `ALLOWED_DEPLOY_BRANCH`. Policy: `docs/policies/canonical-repo-deploy-lock-policy-v1.0.md`. Verify with `bash scripts/verify-canonical-repo.sh`.
+- **Auto deploy:** `.github/workflows/deploy.yml` builds on push, and a self-hosted runner labelled `production` rsyncs to `/root/project` and reloads PM2.
+- **PM2 (`infra/ecosystem.config.cjs`, cwd `/root/project`):** three processes — `jobapp-server` (Express/tRPC :3001), `jobapp-worker` (auto-apply worker), `jobapp-webhook` (deploy webhook :9000, localhost). Nginx config: `infra/nginx/multivohub-jobapp.conf`; it serves the SPA from `/root/project/frontend/dist`.
+- **Manual deploy** (when Actions are down) is fully scripted: `bash scripts/deploy-safe.sh` (ack → VPS backup → `deploy.sh`; a dirty tree blocks unless `DEPLOY_ALLOW_DIRTY=1`). Build artifacts go to `frontend/dist/` and `dist/backend/`.
+
+## Quality Control gate
+
+This project runs a mandatory QC review before integration (see `docs/policies/quality-control-developer-role-spec.md` and `docs/policies/execution-reporting-standard.md`). No task is "done" without an explicit **Approved For Integration** / **Not Approved** decision. The squad workboard and phase ordering live in `docs/squad/` (`README.md`, `Squad_Workboard.md`); the executive rollout plan is `docs/executive-plan/final-rollout-execution-plan-v1.0.md`. FE work must follow `docs/policies/unified-app-layout-and-theme-standard-v1.0.md`.
+
+## Themes
+
+Six themes defined in `frontend/src/index.css` + `frontend/src/stores/themeStore.ts`: `light` (default), `dark`, `visually-impaired` (high contrast), `overstimulated` (calm), `noir` (b/w), `elegant` (cream/gold).
+
+## Notes for working here
+
+- The repo root is littered with historical `*_REPORT.md` / `*_PLAN.md` / `*_SUMMARY.md` status docs and several `.bak`/`.backup`/`.bak2` router files — these are not part of the build. Don't treat them as current spec unless a task points to them; prefer `docs/` and the source.
+- `pnpm-workspace.yaml` exists, but the project is driven by **npm** workspaces and `package-lock.json`. Use npm.
