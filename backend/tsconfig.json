@@ -8,6 +8,7 @@
       "DOM"
     ],
     "outDir": "./dist",
+    "rootDir": "..",
     "skipLibCheck": true,
     "strict": false,
     "strictNullChecks": true,
